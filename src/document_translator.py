@@ -1,8 +1,9 @@
 import pytesseract
 from PIL import Image, ImageTk
 import cv2
-from tkinter import filedialog, Tk, Label, Button, Text, Scrollbar, END, ttk, Menu, messagebox, Canvas
+from tkinter import filedialog, Tk, Label, Button, Text, Scrollbar, END, ttk, Menu, messagebox, Canvas, Toplevel  # Added Toplevel here
 import os
+import sys
 import time
 
 # Set up the Tesseract executable path
@@ -18,40 +19,50 @@ def scan_document(image_path):
     return text
 
 # Function to capture image from webcam and scan it
-def scan_from_webcam():
-    global camera_feed_label
+def capture_from_webcam():
     cap = cv2.VideoCapture(0)
+    
+    if not cap.isOpened():
+        messagebox.showerror("Error", "Webcam not found!")
+        return
 
+    # Create a separate window for webcam feed
+    cam_window = Toplevel(root)
+    cam_window.title("Webcam Feed")
+    cam_window.geometry("640x480")
+    
+    lbl_video = Label(cam_window)
+    lbl_video.pack()
+
+    # Function to update the live feed
     def show_frame():
-        _, frame = cap.read()
-        if frame is not None:
-            # Convert the frame to a format Tkinter can display
-            cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        ret, frame = cap.read()
+        if ret:
+            cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
             img = Image.fromarray(cv2image)
             imgtk = ImageTk.PhotoImage(image=img)
-
-            # Show the frame on the Label
-            camera_feed_label.imgtk = imgtk
-            camera_feed_label.configure(image=imgtk)
-        
-        # Continue to update the frame in real-time
-        camera_feed_label.after(10, show_frame)
-
+            lbl_video.imgtk = imgtk
+            lbl_video.configure(image=imgtk)
+            lbl_video.after(10, show_frame)  # Keep updating the frame
+    
+    # Start showing the video stream
     show_frame()
 
-# Function to capture image from webcam and scan it for text
-def capture_and_scan_from_webcam():
-    cap = cv2.VideoCapture(0)
-    ret, frame = cap.read()
-    if ret:
-        image_path = "captured_image.png"
-        cv2.imwrite(image_path, frame)
+    # Function to capture the image and perform OCR
+    def capture_image():
+        ret, frame = cap.read()
+        if ret:
+            image_path = "captured_image.png"
+            cv2.imwrite(image_path, frame)
+            extracted_text = scan_document(image_path)
+            text_box.delete(1.0, END)
+            text_box.insert(END, extracted_text)
+            cam_window.destroy()
         cap.release()
-        extracted_text = scan_document(image_path)
-        text_box.delete(1.0, END)
-        text_box.insert(END, extracted_text)
-    else:
-        messagebox.showerror("Error", "Unable to access webcam.")
+
+    # Button to capture the image from the webcam feed
+    capture_button = Button(cam_window, text="Capture Image", command=capture_image)
+    capture_button.pack()
 
 # Function to browse and select an image
 def browse_file():
@@ -135,15 +146,8 @@ progress_bar.pack(pady=10)
 webcam_label = Label(frame2, text="Capture from Webcam to Scan", font=("Helvetica", 16), bg='#ffffff')
 webcam_label.pack(pady=10)
 
-webcam_button = ttk.Button(frame2, text="Start Webcam Feed", command=scan_from_webcam)
+webcam_button = ttk.Button(frame2, text="Scan from Webcam", command=capture_from_webcam)
 webcam_button.pack(pady=10)
-
-capture_button = ttk.Button(frame2, text="Capture and Scan", command=capture_and_scan_from_webcam)
-capture_button.pack(pady=10)
-
-# Label to display webcam feed
-camera_feed_label = Label(frame2, bg='#ffffff')
-camera_feed_label.pack(pady=10)
 
 # Text box to display extracted text
 scrollbar = Scrollbar(root)
@@ -168,7 +172,13 @@ root.config(menu=menu_bar)
 
 # Add infamous troll face logo in the bottom right corner
 def add_troll_face():
-    logo_path = r'assets/sterf.png'  # Update this to match the correct path
+    # Get the base path where the executable is running
+    if getattr(sys, 'frozen', False):  # Check if running as an executable
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.abspath(".")
+    
+    logo_path = os.path.join(base_path, 'assets', 'sterf.png')
     logo = Image.open(logo_path)
     logo = logo.resize((100, 100))  # Resize the image
     logo = ImageTk.PhotoImage(logo)
